@@ -32,7 +32,6 @@ mongoose.connect(uri, { useNewUrlParser: true, useUnifiedTopology: true })
   .then(() => console.log('MongoDB connected...'))
   .catch(err => console.error('MongoDB connection error:', err));
 
-const express = require('express');
 const { timeStamp } = require("console");
 
 
