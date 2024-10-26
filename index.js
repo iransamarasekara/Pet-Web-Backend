@@ -172,110 +172,88 @@ app.post("/upload", upload.single('product'), async (req, res) => {
 
 // Schema for Creating Products
 
-const Product = mongoose.model("Product",{
-    id:{
+const Product = mongoose.model("Product", {
+    id: {
         type: Number,
         required: true,
     },
-    name:{
+    name: {
         type: String,
-        required:true,
+        required: true,
     },
-    image:{
-        type:Object,
-        required:true,
+    image: {
+        type: [String], // Store an array of image URLs as strings
+        required: true,
     },
-    category:{
+    category: {
         type: String,
         required: true,
     },
     categoryFor: {
-        type: Object, 
+        type: [String],
         required: true,
     },
-    new_price:{
-        type:Number,
+    new_price: {
+        type: Number,
     },
-    old_price:{
-        type:Number,
+    old_price: {
+        type: Number,
     },
-    date:{
-        type:Date,
-        default:Date.now,
+    date: {
+        type: Date,
+        default: Date.now,
     },
-    available:{
-        type:Boolean,
-        default:true,
+    available: {
+        type: Boolean,
+        default: true,
     },
-    description:{
-        type:String,
+    description: {
+        type: String,
     },
-    // image_2:{
-    //     type:String,
-    // },
-    // image_3:{
-    //     type:String,
-    // },
-    rating:{
-        type:Number,
+    rating: {
+        type: Number,
     },
-    reviewText:{
-        type:Object,
+    reviewText: {
+        type: [String],
     },
-    no_of_rators:{
-        type:Number,
+    no_of_rators: {
+        type: Number,
     },
-})
+});
 
-app.post('/addproduct', async (req,res)=>{
-    // let descbox = [];
-    // for(let i = 0; i < 50; i++){
-    //     let text = '';
-    //     let name = '';
-    //     let profilephoto = '';
-    //     let rating = 0; 
-
-    //     descbox.push({
-    //         text,
-    //         name,
-    //         profilephoto,
-    //         rating
-    //     })
-    // }
+app.post('/addproduct', async (req, res) => {
     let products = await Product.find({});
     let id;
-    if(products.length>0)
-    {
+    if (products.length > 0) {
         let last_product_array = products.slice(-1);
         let last_product = last_product_array[0];
-        id = last_product.id+1;
+        id = last_product.id + 1;
+    } else {
+        id = 1;
     }
-    else{
-        id=1;
-    }
+
     const product = new Product({
-        id:id,
-        name:req.body.name,
-        image:req.body.image,
-        category:req.body.category,
-        categoryFor:req.body.categoryFor,
-        new_price:req.body.new_price,
-        old_price:req.body.old_price,
-        description:req.body.description,
-        // image_2:req.body.image_2,
-        // image_3:req.body.image_3,
-        rating:req.body.rating,
-        reviewText:req.body.reviewText,
-        no_of_rators:req.body.no_of_rators,
+        id: id,
+        name: req.body.name,
+        image: req.body.image, // Assuming this is an array of image URLs
+        category: req.body.category,
+        categoryFor: req.body.categoryFor,
+        new_price: req.body.new_price,
+        old_price: req.body.old_price,
+        description: req.body.description,
+        rating: req.body.rating,
+        reviewText: req.body.reviewText,
+        no_of_rators: req.body.no_of_rators,
     });
+
     console.log(product);
     await product.save();
-    console.log("Saved");
+    console.log("Product Saved");
     res.json({
-        success:true,
-        name:req.body.name,
-    })
-})
+        success: true,
+        name: req.body.name,
+    });
+});
 
 // Creating API for deleting products
 
@@ -594,10 +572,10 @@ app.get('/newcollections', async (req, res)=>{
 })
 
 //creating endpoint for popular in mora section
-app.get('/popularinmora', async (req,res)=>{
+app.get('/featureproducts', async (req,res)=>{
     let products = await Product.find({category:'t-shirts'});
     let popular_in_mora = products.slice(-4).reverse();
-    console.log("Popular in mora fetched");
+    console.log("Feature products fetched");
     res.send(popular_in_mora);
 })
 
@@ -791,7 +769,7 @@ const Order = mongoose.model("Order",{
         required: true,
     },
     product_id:{
-        type:Number,
+        type:[String],
         required:true,
     },
     date:{
@@ -807,10 +785,6 @@ const Order = mongoose.model("Order",{
         required: true,
     },
     username:{
-        type:String,
-        required:true,
-    },
-    productname:{
         type:String,
         required:true,
     },
@@ -860,7 +834,6 @@ app.post('/orderconfirmation', async (req,res)=>{
         product_id:req.body.product_id,
         total:req.body.total,
         username:req.body.username,
-        productname:req.body.productname,
         houseNumber:req.body.houseNumber,
         addressLine1:req.body.addressLine1,
         addressLine2:req.body.addressLine2,
