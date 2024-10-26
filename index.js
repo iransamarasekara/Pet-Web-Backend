@@ -23,7 +23,11 @@ const nodemailer = require('nodemailer');
 const Mailgen = require('mailgen');
 
 app.use(express.json());
-app.use(cors());
+app.use(cors({
+    origin: 'http://localhost:5173', // Replace with your frontend URL
+    methods: ['GET', 'POST', 'PUT', 'DELETE'], // Add other methods if necessary
+    credentials: true // Enable cookies or authorization headers if needed
+}));
 
 // Database Connection With MongoDB
 const uri = process.env.MONGODB_URI;
