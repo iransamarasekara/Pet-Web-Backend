@@ -110,34 +110,44 @@ const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
 // Creating upload endpoint for images
-app.post("/upload", upload.single('product'), async (req, res) => {
-    const file = req.file;
-    if (!file) {
-        return res.status(400).send("No file uploaded.");
+app.post("/upload", upload.array('images'), async (req, res) => {
+    const files = req.files;
+    if (!files || files.length === 0) {
+        return res.status(400).send("No files uploaded.");
     }
 
-    const filename = `${file.fieldname}_${Date.now()}${path.extname(file.originalname)}`;
-    const contentType = file.mimetype;
-
     try {
-        const url = await getPutObjectSignedUrl(filename, contentType);
-        // Here you would typically upload the file to S3 using the signed URL.
-        // This is a simplified example:
-        const uploadParams = {
-            Bucket: "moramerch",
-            Key: `myfiles/${filename}`,
-            Body: file.buffer,
-            ContentType: contentType,
-        };
-        await s2Client.send(new PutObjectCommand(uploadParams));
+        const uploadedFileUrls = [];
+
+        // Iterate over each file in the files array
+        for (const file of files) {
+            const filename = `${file.fieldname}_${Date.now()}${path.extname(file.originalname)}`;
+            const contentType = file.mimetype;
+
+            // Get the signed URL for the file upload (optional, if you are using it)
+            const url = await getPutObjectSignedUrl(filename, contentType);
+
+            // Upload the file to S3
+            const uploadParams = {
+                Bucket: "moramerch",
+                Key: `myfiles/${filename}`,
+                Body: file.buffer, // Use the buffer for upload
+                ContentType: contentType,
+            };
+
+            await s2Client.send(new PutObjectCommand(uploadParams));
+
+            // Store the uploaded file URL
+            uploadedFileUrls.push(`https://moramerch.s3.eu-north-1.amazonaws.com/myfiles/${filename}`);
+        }
 
         res.json({
             success: 1,
-            image_url: `https://moramerch.s3.eu-north-1.amazonaws.com/myfiles/${filename}`
+            image_urls: uploadedFileUrls // Return all uploaded file URLs
         });
     } catch (error) {
-        console.error("Error uploading file to S3", error);
-        res.status(500).send("Error uploading file to S3");
+        console.error("Error uploading files to S3", error);
+        res.status(500).send("Error uploading files to S3");
     }
 });
 
