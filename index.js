@@ -23,11 +23,20 @@ const nodemailer = require('nodemailer');
 const Mailgen = require('mailgen');
 
 app.use(express.json());
+const allowedOrigins = ['http://localhost:3000', 'http://localhost:5173']; // Add your frontend URLs here
+
 app.use(cors({
-    origin: 'http://localhost:5173', // Replace with your frontend URL
-    methods: ['GET', 'POST', 'PUT', 'DELETE'], // Add other methods if necessary
-    credentials: true // Enable cookies or authorization headers if needed
+  origin: (origin, callback) => {
+    if (allowedOrigins.indexOf(origin) !== -1 || !origin) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true
 }));
+
 
 // Database Connection With MongoDB
 const uri = process.env.MONGODB_URI;
@@ -68,27 +77,14 @@ const { timeStamp } = require("console");
 
 async function getPutObjectSignedUrl(filename, contentType) {
     const params = {
-        Bucket: "moramerch",
-        Key: `myfiles/${filename}`,
+        Bucket: "poopooshop",
+        Key: `images/${filename}`,
         ContentType: contentType,
     };
 
     const url = await getSignedUrl(s2Client, new PutObjectCommand(params), { expiresIn: 900 });
     return url;
 }
-
-async function getPutObjectSignedUrl2(filename, contentType) {
-    const params = {
-        Bucket: "moramerch",
-        Key: `slipfiles/${filename}`,
-        ContentType: contentType,
-    };
-
-    const url = await getSignedUrl(s2Client, new PutObjectCommand(params), { expiresIn: 900 });
-    return url;
-}
-
-
 
 //API Creation
 
@@ -133,8 +129,8 @@ app.post("/upload", upload.array('images'), async (req, res) => {
 
             // Upload the file to S3
             const uploadParams = {
-                Bucket: "moramerch",
-                Key: `myfiles/${filename}`,
+                Bucket: "poopooshop",
+                Key: `images/${filename}`,
                 Body: file.buffer, // Use the buffer for upload
                 ContentType: contentType,
             };
@@ -142,7 +138,7 @@ app.post("/upload", upload.array('images'), async (req, res) => {
             await s2Client.send(new PutObjectCommand(uploadParams));
 
             // Store the uploaded file URL
-            uploadedFileUrls.push(`https://moramerch.s3.eu-north-1.amazonaws.com/myfiles/${filename}`);
+            uploadedFileUrls.push(`https://poopooshop.s3.eu-north-1.amazonaws.com/images/${filename}`);
         }
 
         res.json({
@@ -190,6 +186,7 @@ const Product = mongoose.model("Product", {
     id: {
         type: Number,
         required: true,
+        unique: true,
     },
     name: {
         type: String,
@@ -227,8 +224,8 @@ const Product = mongoose.model("Product", {
     rating: {
         type: Number,
     },
-    reviewText: {
-        type: [String],
+    reviewText:{
+        type:Object,
     },
     no_of_rators: {
         type: Number,
@@ -236,37 +233,50 @@ const Product = mongoose.model("Product", {
 });
 
 app.post('/addproduct', async (req, res) => {
-    let products = await Product.find({});
-    let id;
-    if (products.length > 0) {
-        let last_product_array = products.slice(-1);
-        let last_product = last_product_array[0];
-        id = last_product.id + 1;
-    } else {
-        id = 1;
+    
+    console.log("Request body:", req.body); // Debugging log
+    try {
+        // Fetch the last product to determine the next id
+        const lastProduct = await Product.findOne().sort({ id: -1 });
+
+        // If there are no products, start with id = 1
+        const id = lastProduct ? lastProduct.id + 1 : 1;
+
+
+        // Create a new product
+        const product = new Product({
+            id: id,
+            name: req.body.name,
+            image: req.body.image,
+            category: req.body.category,
+            categoryFor: req.body.categoryFor,
+            new_price: req.body.new_price,
+            old_price: req.body.old_price,
+            description: req.body.description,
+            rating: req.body.rating,
+            no_of_rators: req.body.no_of_rators,
+            reviewText:req.body.reviewText,
+            available: req.body.available,
+        });
+
+        // Save the new product
+        await product.save();
+
+        console.log("Product saved successfully");
+
+        // Respond to the client
+        res.json({
+            success: true,
+            name: req.body.name,
+        });
+    } catch (error) {
+        console.error("Error saving product:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to save product",
+            error: error.message
+        });
     }
-
-    const product = new Product({
-        id: id,
-        name: req.body.name,
-        image: req.body.image, // Assuming this is an array of image URLs
-        category: req.body.category,
-        categoryFor: req.body.categoryFor,
-        new_price: req.body.new_price,
-        old_price: req.body.old_price,
-        description: req.body.description,
-        rating: req.body.rating,
-        reviewText: req.body.reviewText,
-        no_of_rators: req.body.no_of_rators,
-    });
-
-    console.log(product);
-    await product.save();
-    console.log("Product Saved");
-    res.json({
-        success: true,
-        name: req.body.name,
-    });
 });
 
 // Creating API for deleting products
@@ -327,6 +337,7 @@ app.post('/addrating',async (req,res)=>{
 app.get('/allproducts',async (req, res)=>{
     let products = await Product.find({});
     products = products.reverse();
+    console.log(products);
     console.log("All Products Fetched");
     res.send(products);
 })
@@ -587,10 +598,11 @@ app.get('/newcollections', async (req, res)=>{
 
 //creating endpoint for popular in mora section
 app.get('/featureproducts', async (req,res)=>{
-    let products = await Product.find({category:'t-shirts'});
-    let popular_in_mora = products.slice(-4).reverse();
+    let products = await Product.find({category:'toys'});
+    console.log(products);
+    let popular_in_pets = products.slice(-4).reverse();
     console.log("Feature products fetched");
-    res.send(popular_in_mora);
+    res.send(popular_in_pets);
 })
 
 // creating middelware to fetch user
@@ -766,13 +778,9 @@ const Order = mongoose.model("Order",{
         type: Number,
         required: true,
     },
-    uder_id:{
+    email:{
         type: String,//this is email of the user
         required:true,
-    },
-    num_purchase_products:{
-        type: Number,
-        required: true,
     },
     whatsApp:{
         type:String,
@@ -782,10 +790,18 @@ const Order = mongoose.model("Order",{
         type:String,
         required: true,
     },
-    product_id:{
-        type:[String],
-        required:true,
-    },
+    products: [
+        {
+            product_id: {
+                type: String, 
+                required: true,
+            },
+            quantity: {
+                type: Number,
+                required: true,
+            },
+        },
+    ],
     date:{
         type:Date,
         default:Date.now,
@@ -798,7 +814,11 @@ const Order = mongoose.model("Order",{
         type:Number,
         required: true,
     },
-    username:{
+    firstName:{
+        type:String,
+        required:true,
+    },
+    lastName:{
         type:String,
         required:true,
     },
@@ -827,104 +847,126 @@ const Order = mongoose.model("Order",{
 
  
 
-app.post('/orderconfirmation', async (req,res)=>{
-    let orders = await Order.find({});
-    let id;
-    if(orders.length>0)
-    {
-        let last_order_array = orders.slice(-1);
-        let last_order = last_order_array[0];
-        id = last_order.id+1;
-    }
-    else{
-        id=1;
-    }
-    const order = new Order({
-        id:id,
-        uder_id:req.body.uder_id,
-        num_purchase_products:req.body.num_purchase_products,
-        whatsApp:req.body.whatsApp,
-        phoneNumber:req.body.phoneNumber,
-        product_id:req.body.product_id,
-        total:req.body.total,
-        username:req.body.username,
-        houseNumber:req.body.houseNumber,
-        addressLine1:req.body.addressLine1,
-        addressLine2:req.body.addressLine2,
-        city:req.body.city,
-        district:req.body.district,
-        province:req.body.province,
-        postalCode:req.body.postalCode
-    });
-    console.log(order);
-    await order.save();
-    console.log("Saved");
-    res.json({
-        success:true,
-        user_id:req.body.uder_id,
-    });
-
-    /** sent a mail when order */
-
-    let config = {
-        service:'gmail',
-        auth: {
-            user: process.env.EMAIL,
-            pass: process.env.PASSWORD
+app.post('/orderconfirmation', async (req, res) => {
+    try {
+        // Fetch existing orders to generate the next order ID
+        let orders = await Order.find({});
+        let id;
+        if (orders.length > 0) {
+            let last_order = orders[orders.length - 1];
+            id = last_order.id + 1;
+        } else {
+            id = 1;
         }
+
+        // Create the order with the new structure for products
+        const order = new Order({
+            id: id,
+            email: req.body.email,
+            whatsApp: req.body.whatsApp,
+            phoneNumber: req.body.phoneNumber,
+            products: req.body.products, // Now expecting an array of { product_id, quantity }
+            total: req.body.total,
+            firstName: req.body.firstName,
+            lastName: req.body.lastName,
+            houseNumber: req.body.houseNumber,
+            addressLine1: req.body.addressLine1,
+            addressLine2: req.body.addressLine2,
+            city: req.body.city,
+            district: req.body.district,
+            province: req.body.province,
+            postalCode: req.body.postalCode,
+        });
+
+        // Save the order
+        await order.save();
+        console.log("Order Saved");
+
+        // Fetch product details for each product in the order
+        let productDetails = await Promise.all(req.body.products.map(async (product) => {
+            let productData = await Product.findOne({ id: product.product_id });
+            return {
+                name: productData.name,
+                new_price: productData.new_price,
+                quantity: product.quantity,
+                total: product.quantity * productData.new_price // Calculate total for each product
+            };
+        }));
+
+        // Construct the product description for the email
+        let productDescription = productDetails.map(product => {
+            return {
+                item: product.name,
+                description: `You have ordered ${product.quantity} of this product at a price of ${product.new_price}`,
+                total: product.total
+            };
+        });
+
+        /** Sending an email upon order confirmation */
+        let config = {
+            service: 'gmail',
+            auth: {
+                user: process.env.EMAIL,
+                pass: process.env.PASSWORD
+            }
+        };
+
+        let transporter = nodemailer.createTransport(config);
+
+        let MailGenerator = new Mailgen({
+            theme: 'default',
+            product: {
+                name: 'Poo Poo Shop',
+                link: 'https://mailgen.js/'
+            }
+        });
+
+        let response = {
+            body: {
+                name: req.body.firstName,
+                intro: "Your bill has arrived!",
+                table: {
+                    data: productDescription // Use the array of products for the email table
+                },
+                outro: 'Thank you for ordering from us!'
+            }
+        };
+
+        let mail = MailGenerator.generate(response);
+
+        let message = {
+            from: process.env.EMAIL,
+            to: req.body.email,
+            subject: 'Order Confirmation',
+            html: mail
+        };
+
+        // Send the email
+        transporter.sendMail(message, (err, info) => {
+            if (err) {
+                console.error("Error sending email:", err);
+            } else {
+                console.log("Email sent:", info.response);
+            }
+        });
+
+        // Respond to the client
+        res.json({
+            success: true,
+            user_id: req.body.email,
+        });
+
+    } catch (error) {
+        console.error("Error processing order:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to process order",
+            error: error.message
+        });
     }
-    let transporter = nodemailer.createTransport(config);
+});
 
-    let MailGenerator = new Mailgen({
-        theme:'default',
-        product:{
-            name:'Poo Poo Shop',
-            link: 'https://mailgen.js/'
-        }
-    })
 
-    let desc = 'You have order '+req.body.num_purchase_products+" "+req.body.productname;
-
-    let response = {
-        body:{
-          name:req.body.username,
-          intro:  "Your bill has arrived!",
-          table: {
-            data:[
-                {
-                    item: req.body.productname,
-                    description: desc,
-                    price : req.body.total,
-                }
-            ]
-          },
-          outro: 'Thank you for ordering from us!'
-        }
-    }
-
-    let mail = MailGenerator.generate(response)
-
-    let message = {
-        from : process.env.EMAIL,
-        to : req.body.uder_id,
-        subject : 'Place your Order',
-        html: mail
-    }
-
-    transporter.sendMail(message);
-    // .then(()=>{
-    //     return res.status(200).json({
-    //         mas:"You should recieve an email",
-    //         success:true,
-    //         user_id:req.body.uder_id,
-    //     })
-    // }).catch(error => {
-    //     return res.status(500).json({ error});
-    // });
-    /** end of mail */
-    
-    
-})
 
 //creating endpoint for getting orders by product id
 //shold pass product id in request
