@@ -23,7 +23,7 @@ const nodemailer = require('nodemailer');
 const Mailgen = require('mailgen');
 
 app.use(express.json());
-const allowedOrigins = ['http://localhost:3000', 'http://localhost:5173']; // Add your frontend URLs here
+const allowedOrigins = ['https://pet-web-backend.onrender.com', 'http://localhost:5173']; // Add your frontend URLs here
 
 app.use(cors({
   origin: (origin, callback) => {
