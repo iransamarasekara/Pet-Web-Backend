@@ -224,9 +224,16 @@ const Product = mongoose.model("Product", {
     rating: {
         type: Number,
     },
-    reviewText:{
-        type:Object,
-    },
+    reviewText: [
+        {
+            text: {
+                type: String,
+            },
+            rating: {
+                type: Number,
+            },
+        },
+    ],
     no_of_rators: {
         type: Number,
     },
@@ -255,7 +262,6 @@ app.post('/addproduct', async (req, res) => {
             description: req.body.description,
             rating: req.body.rating,
             no_of_rators: req.body.no_of_rators,
-            reviewText:req.body.reviewText,
             available: req.body.available,
         });
 
@@ -307,19 +313,45 @@ app.post('/setavailablestate',async (req,res)=>{
 })
 
 //creating API for set reviews and ratings
-app.post('/addreview',async (req,res)=>{
-    console.log("reviewAdded",req.body.itemId);
-    let currentProduct = await Product.findOne({id:req.body.itemId});
-    currentProduct.reviewText[currentProduct.no_of_rators+1].text = req.body.text;   
-    currentProduct.reviewText[currentProduct.no_of_rators+1].name = req.body.name;
-    currentProduct.reviewText[currentProduct.no_of_rators+1].profilephoto = req.body.profilephoto;
-    currentProduct.reviewText[currentProduct.no_of_rators+1].rating = req.body.rating;    
-    currentProduct.rating = (currentProduct.rating * currentProduct.no_of_rators + req.body.rating) / (currentProduct.no_of_rators + 1);                  //.push(req.body.review);
-    currentProduct.no_of_rators += 1;
-    
-    await Product.findOneAndUpdate({id:req.body.itemId},{reviewText:currentProduct.reviewText, no_of_rators:currentProduct.no_of_rators, rating:currentProduct.rating});
-    res.send("reviewAdded")
-})
+app.post('/addreview', async (req, res) => {
+    try {
+        console.log("Adding review for item:", req.body.itemId);
+
+        // Find the product by id
+        let currentProduct = await Product.findOne({ id: req.body.itemId });
+        if (!currentProduct) {
+            return res.status(404).send("Product not found");
+        }
+
+        // Calculate the new rating
+        const newRating = (currentProduct.rating * currentProduct.no_of_rators + req.body.rating) / (currentProduct.no_of_rators + 1);
+
+        // Update the product: push the new review, update rating, and increment no_of_rators
+        await Product.findOneAndUpdate(
+            { id: req.body.itemId },
+            {
+                $push: {
+                    reviewText: {
+                        text: req.body.text,
+                        rating: req.body.rating
+                    }
+                },
+                $set: {
+                    rating: newRating
+                },
+                $inc: {
+                    no_of_rators: 1
+                }
+            }
+        );
+
+        res.send("Review added successfully");
+    } catch (error) {
+        console.error("Error adding review:", error);
+        res.status(500).send("Error adding review");
+    }
+});
+
 
 app.post('/addrating',async (req,res)=>{
     console.log("ratingAdded",req.body.itemId);
@@ -977,11 +1009,11 @@ app.post('/getordersusingid', async (req,res)=>{
 })
 
 //creating endpoint for getting orders of a user
-app.post('/getordersofuser', async (req,res)=>{
-    let orders = await Order.find({uder_id:req.body.uder_id});
-    console.log("Get that user's order");
-    res.json(orders);
-})
+// app.post('/getordersofuser', async (req,res)=>{
+//     let orders = await Order.find({uder_id:req.body.uder_id});
+//     console.log("Get that user's order");
+//     res.json(orders);
+// })
 
 // Creating API for deleting orders by product id
 
