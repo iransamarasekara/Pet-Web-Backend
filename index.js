@@ -23,7 +23,7 @@ const nodemailer = require('nodemailer');
 const Mailgen = require('mailgen');
 
 app.use(express.json());
-const allowedOrigins = ['http://localhost:3000', 'http://localhost:5173']; // Add your frontend URLs here
+const allowedOrigins = ['https://poo-poo-shop.netlify.app', 'http://localhost:3000', 'http://localhost:5173']; // Add your frontend URLs here
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -803,6 +803,46 @@ app.get('/featureproducts', async (req,res)=>{
 //     })
 // })
 
+// schema for admin
+const Admin = mongoose.model("Admin",{
+    email:{
+        type:String,
+        required:true,
+    },
+    password:{
+        type:String,
+        required:true,
+    },
+    username:{
+        type:String,
+        required:true,
+    }
+});
+
+//creating endpoint for admin login
+app.post('/adminlogin',async (req, res)=>{
+    let admin = await Admin.findOne
+    ({email:req.body.email});
+    if(admin){
+        const passCompare = req.body.password===admin.password;
+        if(passCompare){
+            const data = {
+                admin:{
+                    id:admin.id
+                }
+            }
+            const token = jwt.sign(data,'secret_ecom');
+            res.json({success:true,token});
+        }
+        else{
+            res.json({success:false, errors:"Wrong Password"});
+        }
+    }
+    else{
+        res.json({success:false, errors:"Wrong Email"})
+    }
+});
+
 // schema for creating Orders
 
 const Order = mongoose.model("Order",{
@@ -875,6 +915,10 @@ const Order = mongoose.model("Order",{
     postalCode:{
         type:String,
     },
+    isFinish:{
+        type:Boolean,
+        default:false,
+    }
 })
 
  
@@ -996,6 +1040,13 @@ app.post('/orderconfirmation', async (req, res) => {
             error: error.message
         });
     }
+});
+
+app.get('/allorders',async (req, res)=>{
+    let orders = await Order.find({});
+    orders = orders.reverse();
+    console.log("All Orders Fetched");
+    res.send(orders);
 });
 
 
