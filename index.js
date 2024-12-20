@@ -23,7 +23,7 @@ const nodemailer = require('nodemailer');
 const Mailgen = require('mailgen');
 
 app.use(express.json());
-const allowedOrigins = ['https://poo-poo-shop.netlify.app', 'https://poopooshop.lk/', 'http://localhost:3000', 'http://localhost:5173', 'https://poo-poo-shop-admin-dashboard.netlify.app']; // Add your frontend URLs here
+const allowedOrigins = ['https://poo-poo-shop.netlify.app', 'https://poopooshop.lk', 'http://localhost:3000', 'http://localhost:5173', 'https://poo-poo-shop-admin-dashboard.netlify.app']; // Add your frontend URLs here
 
 app.use(cors({
   origin: (origin, callback) => {
