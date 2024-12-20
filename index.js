@@ -219,7 +219,15 @@ const Product = mongoose.model("Product", {
         default: true,
     },
     description: {
-        type: String,
+        formatted_text: {
+            type: String,
+        },
+        bullet_points: {
+            type: [String], 
+        },
+        plain_text: {
+            type: String, 
+        },
     },
     rating: {
         type: Number,
@@ -240,8 +248,8 @@ const Product = mongoose.model("Product", {
 });
 
 app.post('/addproduct', async (req, res) => {
-    
     console.log("Request body:", req.body); // Debugging log
+
     try {
         // Fetch the last product to determine the next id
         const lastProduct = await Product.findOne().sort({ id: -1 });
@@ -249,6 +257,12 @@ app.post('/addproduct', async (req, res) => {
         // If there are no products, start with id = 1
         const id = lastProduct ? lastProduct.id + 1 : 1;
 
+        // Structure the description object
+        const description = {
+            formatted_text: req.body.description?.formatted_text || "",
+            bullet_points: req.body.description?.bullet_points || [],
+            plain_text: req.body.description?.plain_text || ""
+        };
 
         // Create a new product
         const product = new Product({
@@ -259,7 +273,7 @@ app.post('/addproduct', async (req, res) => {
             categoryFor: req.body.categoryFor,
             new_price: req.body.new_price,
             old_price: req.body.old_price,
-            description: req.body.description,
+            description: description, // Use the structured description
             rating: req.body.rating,
             no_of_rators: req.body.no_of_rators,
             available: req.body.available,
@@ -280,7 +294,7 @@ app.post('/addproduct', async (req, res) => {
         res.status(500).json({
             success: false,
             message: "Failed to save product",
-            error: error.message
+            error: error.message,
         });
     }
 });
