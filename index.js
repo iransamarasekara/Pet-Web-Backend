@@ -299,16 +299,78 @@ app.post('/addproduct', async (req, res) => {
     }
 });
 
+app.put('/editproduct/:id', async (req, res) => {
+    try {
+        const { id } = req.params; // Extract product ID from the URL parameter
+        const updatedData = req.body; // Extract updated product data from the request body
+
+        // Validate that `id` is provided
+        if (!id) {
+            return res.status(400).json({
+                success: false,
+                message: 'Product ID is required',
+            });
+        }
+
+        // Update the product in the database
+        const updatedProduct = await Product.findOneAndUpdate(
+            { id },          // Match the product by its `id` field
+            updatedData,     // Update the product with the new data
+            { new: true, runValidators: true } // Return updated document and validate the data
+        );
+
+        // Handle case where product is not found
+        if (!updatedProduct) {
+            return res.status(404).json({
+                success: false,
+                message: 'Product not found',
+            });
+        }
+
+        console.log(`Product updated successfully: ${updatedProduct.name}`);
+        res.json({
+            success: true,
+            message: 'Product updated successfully',
+            product: updatedProduct, // Return the updated product in the response
+        });
+    } catch (error) {
+        console.error('Error updating product:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error while updating product',
+        });
+    }
+});
+
+
 // Creating API for deleting products
 
-app.post('/removeproduct', async(req, res)=>{
-    await Product.findOneAndDelete({id:req.body.id});
-    console.log("Removed");
-    res.json({
-        success:true,
-        name:req.body.name
-    })
-})
+app.post('/removeproduct/:id', async (req, res) => {
+    try {
+        const id = req.params.id; // Extract the id from the URL parameters
+        const product = await Product.findByIdAndDelete(id); // Use findByIdAndDelete for simplicity
+
+        if (!product) {
+            return res.status(404).json({
+                success: false,
+                message: 'Product not found'
+            });
+        }
+
+        console.log(`Product removed: ${product.name}`);
+        res.json({
+            success: true,
+            message: `Product ${product.name} removed successfully`
+        });
+    } catch (error) {
+        console.error('Error removing product:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error while removing the product'
+        });
+    }
+});
+
 
 //creating endpoint for getting related products
 app.post('/getrelatedproducts', async (req,res)=>{
@@ -318,13 +380,74 @@ app.post('/getrelatedproducts', async (req,res)=>{
     res.send(related_products);
 })
 //creating API for set available or not
-app.post('/setavailablestate',async (req,res)=>{
-    console.log("AvailableStateAdded",req.body.itemId);
-    let currentProduct = await Product.findOne({id:req.body.itemId});
-    currentProduct.available = req.body.available;   
-    await Product.findOneAndUpdate({id:req.body.itemId},{available:currentProduct.available});
-    res.send("AvailableStateAdded")
-})
+app.post('/addavailability/:id', async (req, res) => {
+    try {
+        const { id } = req.params; // Extract product ID from URL parameter
+        const { available } = req.body; // Extract availability status from request body
+
+        // Validate the availability input
+        if (typeof available !== 'boolean') {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid value for "available". It must be a boolean.',
+            });
+        }
+
+        // Update the product's availability status
+        const updatedProduct = await Product.findOneAndUpdate(
+            { id }, // Match the product by ID
+            { available }, // Update the "available" field
+            { new: true } // Return the updated product
+        );
+
+        // Handle case where product is not found
+        if (!updatedProduct) {
+            return res.status(404).json({
+                success: false,
+                message: 'Product not found',
+            });
+        }
+
+        console.log(`Availability updated for product ID: ${id}`);
+        res.json({
+            success: true,
+            message: 'Availability status updated successfully',
+            product: updatedProduct, // Include the updated product in the response
+        });
+    } catch (error) {
+        console.error('Error updating availability:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error while updating availability',
+        });
+    }
+});
+
+app.get('/product/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const product = await Product.findOne({ id });
+
+        if (!product) {
+            return res.status(404).json({
+                success: false,
+                message: 'Product not found',
+            });
+        }
+
+        res.json({
+            success: true,
+            product,
+        });
+    } catch (error) {
+        console.error('Error fetching product:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error while fetching product',
+        });
+    }
+});
+
 
 //creating API for set reviews and ratings
 app.post('/addreview', async (req, res) => {
@@ -380,13 +503,30 @@ app.post('/addrating',async (req,res)=>{
 
 // Creating API for getting all products
 
-app.get('/allproducts',async (req, res)=>{
-    let products = await Product.find({});
-    products = products.reverse();
-    console.log(products);
-    console.log("All Products Fetched");
-    res.send(products);
-})
+app.get('/allproducts', async (req, res) => {
+    const limit = parseInt(req.query.limit) || 20; // Default limit
+    const page = parseInt(req.query.page) || 1; // Default page
+
+    try {
+        const skip = (page - 1) * limit;
+        const products = await Product.find({})
+            .skip(skip)
+            .limit(limit)
+            .sort({ _id: -1 });
+
+        const totalProducts = await Product.countDocuments({}); // Get total count of products
+
+        res.json({
+            products,
+            total: totalProducts, // Total number of products
+        });
+
+        console.log(`Page ${page}, Limit ${limit} - Products fetched`);
+    } catch (error) {
+        console.error("Error fetching products:", error);
+        res.status(500).json({ error: "Failed to fetch products" });
+    }
+});
 
 // Shema creating for User model
 
@@ -878,14 +1018,8 @@ const Order = mongoose.model("Order",{
     },
     products: [
         {
-            product_id: {
-                type: String, 
-                required: true,
-            },
-            quantity: {
-                type: Number,
-                required: true,
-            },
+            product_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },  // ObjectId reference
+            quantity: { type: Number, required: true },
         },
     ],
     date:{
@@ -908,26 +1042,28 @@ const Order = mongoose.model("Order",{
         type:String,
         required:true,
     },
-    houseNumber:{
-        type:String,
-    },
-    addressLine1:{
-        type:String,
-    },
-    addressLine2:{
-        type:String,
-    },
-    city:{
-        type:String,
-    },
-    district:{
-        type:String,
-    },
-    province:{
-        type:String,
-    },
-    postalCode:{
-        type:String,
+    address: {
+        houseNumber: {
+            type: String,
+        },
+        addressLine1: {
+            type: String,
+        },
+        addressLine2: {
+            type: String,
+        },
+        city: {
+            type: String,
+        },
+        district: {
+            type: String,
+        },
+        province: {
+            type: String,
+        },
+        postalCode: {
+            type: String,
+        },
     },
     isFinish:{
         type:Boolean,
@@ -949,16 +1085,7 @@ app.post('/orderconfirmation', async (req, res) => {
             id = 1;
         }
 
-        // Create the order with the new structure for products
-        const order = new Order({
-            id: id,
-            email: req.body.email,
-            whatsApp: req.body.whatsApp,
-            phoneNumber: req.body.phoneNumber,
-            products: req.body.products, // Now expecting an array of { product_id, quantity }
-            total: req.body.total,
-            firstName: req.body.firstName,
-            lastName: req.body.lastName,
+        const address = {
             houseNumber: req.body.houseNumber,
             addressLine1: req.body.addressLine1,
             addressLine2: req.body.addressLine2,
@@ -966,6 +1093,49 @@ app.post('/orderconfirmation', async (req, res) => {
             district: req.body.district,
             province: req.body.province,
             postalCode: req.body.postalCode,
+        };
+
+        // Validate the address fields
+        if (!address.city || !address.district || !address.province || !address.postalCode) {
+            return res.status(400).json({ success: false, message: "Invalid address information" });
+        }
+
+        // Map over the products array to get the ObjectId for each product
+        const productsWithObjectIds = [];
+        const productDetails = await Promise.all(req.body.products.map(async (product) => {
+            // Find the product by its `id` (the one passed in the order)
+            const productDoc = await Product.findOne({ id: product.product_id });
+
+            if (!productDoc) {
+                return res.status(400).json({ success: false, message: `Product with id ${product.product_id} not found` });
+            }
+
+            // Push the product with its `ObjectId` and quantity to the products array
+            productsWithObjectIds.push({
+                product_id: productDoc._id,  // Use the ObjectId of the product
+                quantity: product.quantity,
+            });
+
+            // Return product details for mailing purposes
+            return {
+                name: productDoc.name,
+                new_price: productDoc.new_price,
+                quantity: product.quantity,
+                total: product.quantity * productDoc.new_price // Calculate total for each product
+            };
+        }));
+
+        // Create the order with the updated structure for products
+        const order = new Order({
+            id: id,
+            email: req.body.email,
+            whatsApp: req.body.whatsApp,
+            phoneNumber: req.body.phoneNumber,
+            products: productsWithObjectIds,  // Now includes products with ObjectIds
+            total: req.body.total,
+            firstName: req.body.firstName,
+            lastName: req.body.lastName,
+            address: address,
         });
 
         // Save the order
@@ -973,15 +1143,15 @@ app.post('/orderconfirmation', async (req, res) => {
         console.log("Order Saved");
 
         // Fetch product details for each product in the order
-        let productDetails = await Promise.all(req.body.products.map(async (product) => {
-            let productData = await Product.findOne({ id: product.product_id });
-            return {
-                name: productData.name,
-                new_price: productData.new_price,
-                quantity: product.quantity,
-                total: product.quantity * productData.new_price // Calculate total for each product
-            };
-        }));
+        // let productDetails = await Promise.all(req.body.products.map(async (product) => {
+        //     let productData = await Product.findOne({ id: product.product_id });
+        //     return {
+        //         name: productData.name,
+        //         new_price: productData.new_price,
+        //         quantity: product.quantity,
+        //         total: product.quantity * productData.new_price // Calculate total for each product
+        //     };
+        // }));
 
         // Construct the product description for the email
         let productDescription = productDetails.map(product => {
@@ -1056,22 +1226,148 @@ app.post('/orderconfirmation', async (req, res) => {
     }
 });
 
-app.get('/allorders',async (req, res)=>{
-    let orders = await Order.find({});
-    orders = orders.reverse();
-    console.log("All Orders Fetched");
-    res.send(orders);
+// app.get('/allorders',async (req, res)=>{
+//     let orders = await Order.find({});
+//     orders = orders.reverse();
+//     console.log("All Orders Fetched");
+//     res.send(orders);
+// });
+
+app.get('/orders', async (req, res) => {
+    try {
+        const { isFinished } = req.query; // Extract the query parameter
+        let filter = {};
+
+        // Apply filter based on the isFinished query parameter
+        if (isFinished !== undefined) {
+            if (isFinished === 'true') {
+                filter.isFinish = true;
+            } else if (isFinished === 'false') {
+                filter.isFinish = false;
+            } else {
+                return res.status(400).json({ success: false, message: "Invalid value for isFinished. It must be 'true' or 'false'." });
+            }
+        }
+
+
+        // Fetch orders with the specified filter and sort by date (descending)
+        const orders = await Order.find(filter)
+        .populate({
+            path: 'products.product_id', 
+            select: 'name category new_price old_price', 
+        })
+        .sort({ date: -1 });
+
+        console.log(
+            isFinished === undefined
+                ? "All Orders Fetched"
+                : `${isFinished === 'true' ? "Finished" : "Unfinished"} Orders Fetched`
+        );
+
+        res.send(orders);
+    } catch (error) {
+        console.error("Error fetching orders:", error);
+        res.status(500).json({ success: false, message: "An error occurred while fetching orders" });
+    }
+});
+
+//creating endpoint for updating order status
+app.put('/orders/:id', async (req, res) => {
+    try {
+        const { id } = req.params; // Extract the order ID from the URL
+        const { isFinish } = req.body; // Extract the isFinish value from the request body
+
+        // Validate the isFinish input
+        if (isFinish === undefined || typeof isFinish !== 'boolean') {
+            return res.status(400).json({ 
+                success: false, 
+                message: "Invalid value for isFinish. It must be a boolean (true or false)." 
+            });
+        }
+
+        // Update the order's isFinish field
+        const updatedOrder = await Order.findOneAndUpdate(
+            { id }, // Match the order by `id`
+            { isFinish }, // Update the `isFinish` field
+            { new: true } // Return the updated document
+        );
+
+        // If no order is found, return an error
+        if (!updatedOrder) {
+            return res.status(404).json({ 
+                success: false, 
+                message: "Order not found" 
+            });
+        }
+
+        console.log(`Order ${id} updated: isFinish set to ${isFinish}`);
+        res.status(200).json({ 
+            success: true, 
+            message: "Order status updated successfully", 
+            order: updatedOrder 
+        });
+    } catch (error) {
+        console.error("Error updating order:", error);
+        res.status(500).json({ 
+            success: false, 
+            message: "An error occurred while updating the order status" 
+        });
+    }
+});
+
+app.get('/orders/product/:productId', async (req, res) => {
+    try {
+        const { productId } = req.params;
+
+        if (!productId) {
+            return res.status(400).json({
+                success: false,
+                message: "Product ID is required",
+            });
+        }
+
+        // Fetch orders that include the specified product_id
+        const orders = await Order.find({
+            "products.product_id": productId, // Filter for orders containing the product_id
+        })
+        .populate({
+            path: 'products.product_id',
+            select: 'name category new_price old_price', // Select relevant product fields
+        })
+        .sort({ date: -1 }); // Sort orders by date in descending order
+
+        // if (!orders.length) {
+        //     return res.status(404).json({
+        //         success: false,
+        //         message: `No orders found for product ID: ${productId}`,
+        //         orders: [],
+        //     });
+        // }
+
+        console.log(`Orders fetched for product ID: ${productId}`);
+        return res.status(200).json({
+            success: true,
+            message: `Orders found for product ID: ${productId}`,
+            orders,
+        });
+    } catch (error) {
+        console.error("Error fetching orders for product:", error.message);
+        return res.status(500).json({
+            success: false,
+            message: "An error occurred while fetching orders for the product",
+        });
+    }
 });
 
 
 
 //creating endpoint for getting orders by product id
 //shold pass product id in request
-app.post('/getordersusingid', async (req,res)=>{
-    let orders = await Order.find({product_id:req.body.product_id});
-    console.log("Get that product orders");
-    res.json(orders);
-})
+// app.post('/getordersusingid', async (req,res)=>{
+//     let orders = await Order.find({product_id:req.body.product_id});
+//     console.log("Get that product orders");
+//     res.json(orders);
+// })
 
 //creating endpoint for getting orders of a user
 // app.post('/getordersofuser', async (req,res)=>{
