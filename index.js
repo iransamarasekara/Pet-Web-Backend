@@ -506,27 +506,57 @@ app.post('/addrating',async (req,res)=>{
 app.get('/allproducts', async (req, res) => {
     const limit = parseInt(req.query.limit) || 20; // Default limit
     const page = parseInt(req.query.page) || 1; // Default page
+    const category = req.query.category || ""; // Category filter
+    const search = req.query.search || ""; // Search keyword
+    const pet = req.query.pet || ""; // Pet filter
 
     try {
         const skip = (page - 1) * limit;
-        const products = await Product.find({})
+
+        // Build the query object
+        const query = {};
+
+        // Filter by category if provided
+        if (category) {
+            query.category = category; // Exact match on category
+        }
+
+        // Add search functionality (search by name, description, or categoryFor)
+        if (search) {
+            query.$or = [
+                { name: { $regex: search, $options: "i" } }, // Case-insensitive search in name
+                { "description.formatted_text": { $regex: search, $options: "i" } }, // Search in formatted description
+                { "description.plain_text": { $regex: search, $options: "i" } }, // Search in plain description
+                { categoryFor: { $regex: search, $options: "i" } }, // Search in categoryFor array
+            ];
+        }
+
+        // Filter by `pet` if provided
+        if (pet) {
+            query.categoryFor = { $regex: pet, $options: "i" }; // Case-insensitive match for `pet` in categoryFor array
+        }
+
+        // Fetch the filtered products
+        const products = await Product.find(query)
             .skip(skip)
             .limit(limit)
-            .sort({ _id: -1 });
+            .sort({ date: -1 }); // Sort by the most recent products
 
-        const totalProducts = await Product.countDocuments({}); // Get total count of products
+        // Get the total count of products matching the query
+        const totalProducts = await Product.countDocuments(query);
 
         res.json({
             products,
-            total: totalProducts, // Total number of products
+            total: totalProducts, // Total number of filtered products
         });
 
-        console.log(`Page ${page}, Limit ${limit} - Products fetched`);
+        console.log(`Page ${page}, Limit ${limit}, Category: ${category}, Search: ${search}, Pet: ${pet} - Products fetched`);
     } catch (error) {
         console.error("Error fetching products:", error);
         res.status(500).json({ error: "Failed to fetch products" });
     }
 });
+
 
 // Shema creating for User model
 
@@ -782,14 +812,33 @@ app.get('/newcollections', async (req, res)=>{
     res.send(newcollection);
 })
 
-//creating endpoint for popular in mora section
-app.get('/featureproducts', async (req,res)=>{
-    let products = await Product.find({category:'toys'});
-    console.log(products);
-    let popular_in_pets = products.slice(-4).reverse();
-    console.log("Feature products fetched");
-    res.send(popular_in_pets);
-})
+app.get('/featureproducts', async (req, res) => {
+    try {
+        // Fetch all products from the database
+        const products = await Product.find();
+
+        // Filter products that have both old_price and new_price defined
+        const productsWithDiscounts = products.filter(product => product.old_price && product.new_price);
+
+        // Calculate the discount for each product and sort by the highest discount
+        const sortedProducts = productsWithDiscounts
+            .map(product => ({
+                ...product._doc, // Spread the product fields
+                discount: (product.old_price - product.new_price) / product.old_price, // Calculate discount percentage
+            }))
+            .sort((a, b) => b.discount - a.discount); // Sort by discount in descending order
+
+        // Get the top 4 products with the highest discount
+        const topDiscountedProducts = sortedProducts.slice(0, 4);
+
+        console.log("Feature products fetched");
+        res.json(topDiscountedProducts);
+    } catch (error) {
+        console.error("Error fetching feature products:", error);
+        res.status(500).send("Failed to fetch feature products");
+    }
+});
+
 
 // creating middelware to fetch user
     // const fetchUser = async (req,res,next)=>{
