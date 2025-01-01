@@ -8,6 +8,7 @@ const path = require("path");
 const cors = require("cors");
 const {S3Client,PutObjectCommand } = require('@aws-sdk/client-s3');
 const {getSignedUrl} = require('@aws-sdk/s3-request-presigner');
+const bcrypt = require('bcryptjs');
 
 require("dotenv").config();
 
@@ -42,7 +43,10 @@ app.use(cors({
 const uri = process.env.MONGODB_URI;
 
 mongoose.connect(uri, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => console.log('MongoDB connected...'))
+  .then(() => {
+    console.log('MongoDB connected...');
+    createAdmins();
+  })
   .catch(err => console.error('MongoDB connection error:', err));
 
 const { timeStamp } = require("console");
@@ -829,7 +833,7 @@ app.get('/featureproducts', async (req, res) => {
             .sort((a, b) => b.discount - a.discount); // Sort by discount in descending order
 
         // Get the top 4 products with the highest discount
-        const topDiscountedProducts = sortedProducts.slice(0, 4);
+        const topDiscountedProducts = sortedProducts.slice(0, 6);
 
         console.log("Feature products fetched");
         res.json(topDiscountedProducts);
@@ -1007,42 +1011,125 @@ app.get('/featureproducts', async (req, res) => {
 // })
 
 // schema for admin
-const Admin = mongoose.model("Admin",{
-    email:{
-        type:String,
-        required:true,
+const Admin = mongoose.model("Admin", {
+    email: {
+      type: String,
+      required: true,
+      unique: true,
     },
-    password:{
-        type:String,
-        required:true,
+    password: {
+      type: String,
+      required: true,
     },
-    username:{
-        type:String,
-        required:true,
+    username: {
+      type: String,
+      required: true,
     }
 });
 
-//creating endpoint for admin login
-app.post('/adminlogin',async (req, res)=>{
-    let admin = await Admin.findOne
-    ({email:req.body.email});
-    if(admin){
-        const passCompare = req.body.password===admin.password;
-        if(passCompare){
-            const data = {
-                admin:{
-                    id:admin.id
-                }
-            }
-            const token = jwt.sign(data,'secret_ecom');
-            res.json({success:true,token});
+// Endpoint for admin login
+app.post('/adminlogin', async (req, res) => {
+    try {
+      const { email, password } = req.body;
+  
+      // Find admin by email
+      const admin = await Admin.findOne({ email });
+      if (!admin) {
+        return res.status(400).json({ success: false, errors: "Wrong Email" });
+      }
+  
+      // Compare passwords
+      const passCompare = await bcrypt.compare(password, admin.password);
+      if (!passCompare) {
+        return res.status(400).json({ success: false, errors: "Wrong Password" });
+      }
+  
+      // Generate JWT token
+      const data = {
+        admin: {
+          id: admin.id,
         }
-        else{
-            res.json({success:false, errors:"Wrong Password"});
-        }
+      };
+      const token = jwt.sign(data, process.env.JWT_SECRET, { expiresIn: '1h' });
+  
+      res.json({ success: true, token });
+    } catch (error) {
+      res.status(500).json({ success: false, errors: "Internal Server Error" });
     }
-    else{
-        res.json({success:false, errors:"Wrong Email"})
+});
+
+  // Function to create hardcoded admins
+const createAdmins = async () => {
+    try {
+      const admins = [
+        {
+          email: "poopooshop13@gmail.com",
+          username: "ShopAdmin",
+          password: "poo123#@shop", // Plain text password
+        },
+        {
+          email: "admin2@example.com",
+          username: "BisonAdmin",
+          password: "bison@321", // Plain text password
+        }
+      ];
+  
+      for (const admin of admins) {
+        // Check if the admin already exists
+        const existingAdmin = await Admin.findOne({ email: admin.email });
+        if (!existingAdmin) {
+          // Hash the password
+          const hashedPassword = await bcrypt.hash(admin.password, 10);
+  
+          // Create the admin
+          const newAdmin = new Admin({
+            email: admin.email,
+            username: admin.username,
+            password: hashedPassword,
+          });
+  
+          await newAdmin.save();
+          console.log(`Admin ${admin.username} created successfully.`);
+        } else {
+          console.log(`Admin with email ${admin.email} already exists.`);
+        }
+      }
+    } catch (error) {
+      console.error("Error creating admins:", error);
+    }
+};
+
+const authenticateAdmin = async (req, res, next) => {
+    const token = req.header('auth-token');
+    if (!token) {
+        return res.status(401).json({ error: "Access denied. No token provided." });
+    }
+
+    try {
+        // Verify token
+        const data = jwt.verify(token, process.env.JWT_SECRET);
+        req.user = data.admin;
+        next();
+    } catch (error) {
+        console.error('Invalid token:', error.message);
+        return res.status(401).json({ error: "Invalid token. Please authenticate again." });
+    }
+};
+
+// Route to fetch admin details
+app.get('/admindetails', authenticateAdmin, async (req, res) => {
+    try {
+        // Find admin by ID and exclude the password
+        const admin = await Admin.findById(req.user.id).select('-password');
+        if (!admin) {
+            return res.status(404).json({ error: "Admin not found" });
+        }
+
+        // Respond with admin details
+        res.status(200).json(admin);
+    } catch (error) {
+        console.error('Server error:', error.message);
+        res.status(500).json({ error: "Internal server error" });
     }
 });
 
@@ -1117,10 +1204,38 @@ const Order = mongoose.model("Order",{
     isFinish:{
         type:Boolean,
         default:false,
-    }
+    },
+    isRead: {
+        type: Boolean,
+        default: false,
+    },
+    isCancelled: {
+        type: Boolean,
+        default: false,
+    },
 })
 
- 
+app.get('/orders/unread', async (req, res) => {
+    try {
+        const unreadOrders = await Order.find({ isRead: false }).populate({
+            path: 'products.product_id', 
+            select: 'name category new_price old_price image',
+        });
+        res.json(unreadOrders);
+    } catch (error) {
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// Mark orders as read
+app.post('/orders/mark-read', async (req, res) => {
+    try {
+        await Order.updateMany({ isRead: false }, { $set: { isRead: true } });
+        res.json({ message: 'Notifications marked as read' });
+    } catch (error) {
+        res.status(500).json({ error: 'Server error' });
+    }
+});
 
 app.post('/orderconfirmation', async (req, res) => {
     try {
@@ -1284,10 +1399,9 @@ app.post('/orderconfirmation', async (req, res) => {
 
 app.get('/orders', async (req, res) => {
     try {
-        const { isFinished } = req.query; // Extract the query parameter
+        const { isFinished, isCancelled } = req.query;
         let filter = {};
 
-        // Apply filter based on the isFinished query parameter
         if (isFinished !== undefined) {
             if (isFinished === 'true') {
                 filter.isFinish = true;
@@ -1298,14 +1412,27 @@ app.get('/orders', async (req, res) => {
             }
         }
 
+        if (isCancelled !== undefined) {
+            if (isCancelled === 'true') {
+                filter.isCancelled = true;
+            } else if (isCancelled === 'false') {
+                filter.isCancelled = false;
+            } else {
+                return res.status(400).json({ success: false, message: "Invalid value for isCancelled. It must be 'true' or 'false'." });
+            }
+        }
 
-        // Fetch orders with the specified filter and sort by date (descending)
+        // Special handling for "pending" orders
+        if (isFinished === 'false' && isCancelled === undefined) {
+            filter.isCancelled = false; // Explicitly exclude cancelled orders
+        }
+
         const orders = await Order.find(filter)
-        .populate({
-            path: 'products.product_id', 
-            select: 'name category new_price old_price', 
-        })
-        .sort({ date: -1 });
+            .populate({
+                path: 'products.product_id',
+                select: 'name category new_price old_price image',
+            })
+            .sort({ date: -1 });
 
         console.log(
             isFinished === undefined
@@ -1320,49 +1447,50 @@ app.get('/orders', async (req, res) => {
     }
 });
 
-//creating endpoint for updating order status
 app.put('/orders/:id', async (req, res) => {
     try {
-        const { id } = req.params; // Extract the order ID from the URL
-        const { isFinish } = req.body; // Extract the isFinish value from the request body
-
-        // Validate the isFinish input
-        if (isFinish === undefined || typeof isFinish !== 'boolean') {
-            return res.status(400).json({ 
-                success: false, 
-                message: "Invalid value for isFinish. It must be a boolean (true or false)." 
-            });
-        }
-
-        // Update the order's isFinish field
-        const updatedOrder = await Order.findOneAndUpdate(
-            { id }, // Match the order by `id`
-            { isFinish }, // Update the `isFinish` field
-            { new: true } // Return the updated document
-        );
-
-        // If no order is found, return an error
-        if (!updatedOrder) {
-            return res.status(404).json({ 
-                success: false, 
-                message: "Order not found" 
-            });
-        }
-
-        console.log(`Order ${id} updated: isFinish set to ${isFinish}`);
-        res.status(200).json({ 
-            success: true, 
-            message: "Order status updated successfully", 
-            order: updatedOrder 
+      const { id } = req.params; // Extract the order ID from the URL
+      const { isFinish, isCancelled } = req.body; // Extract the isFinish and isCancelled values from the request body
+  
+      // Validate input
+      if (typeof isFinish !== "boolean" || typeof isCancelled !== "boolean") {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid input: isFinish and isCancelled must be boolean values.",
         });
+      }
+  
+      // Update the order's isFinish and isCancelled fields
+      const updatedOrder = await Order.findByIdAndUpdate(
+        id, // Match the order by `_id`
+        { isFinish, isCancelled },
+        { new: true } // Return the updated document
+      );
+  
+      // If no order is found, return an error
+      if (!updatedOrder) {
+        return res.status(404).json({
+          success: false,
+          message: "Order not found",
+        });
+      }
+  
+      console.log(
+        `Order ${id} updated: isFinish set to ${isFinish}, isCancelled set to ${isCancelled}`
+      );
+      res.status(200).json({
+        success: true,
+        message: "Order status updated successfully",
+        order: updatedOrder,
+      });
     } catch (error) {
-        console.error("Error updating order:", error);
-        res.status(500).json({ 
-            success: false, 
-            message: "An error occurred while updating the order status" 
-        });
+      console.error("Error updating order:", error);
+      res.status(500).json({
+        success: false,
+        message: "An error occurred while updating the order status",
+      });
     }
-});
+  });  
 
 app.get('/orders/product/:productId', async (req, res) => {
     try {
@@ -1381,7 +1509,7 @@ app.get('/orders/product/:productId', async (req, res) => {
         })
         .populate({
             path: 'products.product_id',
-            select: 'name category new_price old_price', // Select relevant product fields
+            select: 'name category new_price old_price image', // Select relevant product fields
         })
         .sort({ date: -1 }); // Sort orders by date in descending order
 
