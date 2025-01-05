@@ -1229,9 +1229,15 @@ app.get('/orders/unread', async (req, res) => {
 
 // Mark orders as read
 app.post('/orders/mark-read', async (req, res) => {
+    const { orderId } = req.body; // Extract orderId from the request body
+
+    if (!orderId) {
+        return res.status(400).json({ error: 'Order ID is required' });
+    }
+
     try {
-        await Order.updateMany({ isRead: false }, { $set: { isRead: true } });
-        res.json({ message: 'Notifications marked as read' });
+        await Order.updateOne({ _id: orderId }, { $set: { isRead: true } });
+        res.json({ message: 'Notification marked as read' });
     } catch (error) {
         res.status(500).json({ error: 'Server error' });
     }
